@@ -1,0 +1,355 @@
+/********************************End of File************************************//********************************Copyright (c)**********************************\
+**
+**                   (c) Copyright 2019, temp_duan, China, DY.
+**                           All Rights Reserved
+**
+**                           By(德阳科派科技有限公司)
+**                             http://www.kpiot.top
+**
+**----------------------------------文件信息------------------------------------
+** 文件名称: main.c
+** 创建人员: temp_duan
+** 创建日期: 2019-07-09
+** 文档描述:
+**
+**----------------------------------版本信息------------------------------------
+** 版本代号: V0.1
+** 版本说明: 初始版本
+**
+**------------------------------------------------------------------------------
+\********************************End of Head************************************/
+
+/********************************End of File************************************/
+#include "stm32f10x.h"
+#include "led.h"
+#include "jdq.h"
+#include "key.h"
+#include "sys.h"
+#include "timer.h"
+#include "delay.h"
+#include "usart.h"
+#include "usart3.h"
+#include "iwdg.h"
+#include "exti.h"
+#include "gizwits_product.h"
+#include "beep.h"
+#include "door.h"
+#include "DHT11.h"
+#include "adcx.h"
+
+void scanf_key(void);
+
+volatile int key1Pressed = 0 ;
+
+u32 key_holdon_ms = 0;  //时间判断
+volatile u8 short_key_flag = 0; //单击标志位
+volatile u8 long_key_flag = 0;  //长按标志位
+volatile u8 wifi_flag = 0;      //配网标志位
+volatile u8 wifi_sta;           //网络状态（ 0 断开，1连接）
+volatile u8 key;
+volatile u8 WIFI;
+
+u8 time_HH = 1;
+u8 time_MM = 1;
+u8 time_SS = 0;
+
+u8 key1_flag, key2_flag, key3_flag, key4_flag;
+u8 door_flag;
+
+u8 NTP_HH;
+u8 NTP_MM;
+u8 NTP_SS;
+
+u8 temp, hum;
+u8 light, yw;
+
+dataPoint_t currentDataPoint;
+
+/*******************************************************************************
+** 函数名称: userHandle
+** 功能描述:
+** 参数说明: None
+** 返回说明: None
+** 创建人员: temp_duan
+** 创建日期: 2019-07-09
+**------------------------------------------------------------------------------
+** 修改人员:
+** 修改日期:
+** 修改描述:
+**------------------------------------------------------------------------------
+********************************************************************************/
+void userHandle(void)
+{
+    if( wifi_sta )
+    {
+        if( wifi_flag )
+        {
+            WIFI = 0;
+            wifi_flag = 0;
+        }
+        DHT11_Read_Data(&temp, &hum);
+        currentDataPoint.valuetemp = temp;
+        currentDataPoint.valuehum = hum;
+
+        AD_Read(&yw, &light);
+        currentDataPoint.valueadc = yw;
+        currentDataPoint.valuelight = light;
+				
+				TIM_SetCompare3(TIM3,currentDataPoint.valuepwm1);
+		
+        if((time_HH == NTP_HH) && (time_MM == NTP_MM) && (time_SS == NTP_SS) )
+        {
+            //开灯
+            key = 1;
+            LED1_ON;
+            LED2_ON;
+            LED3_ON;
+            jdq1 = 0;
+        }
+
+    }
+
+    if(short_key_flag == 1)
+    {
+        if((key1_flag == 0) | (key2_flag == 0) | (key3_flag == 0) | (key4_flag == 0))
+        {
+            //开灯
+            key1_flag = 1;
+            key2_flag = 1;
+            key3_flag = 1;
+            key4_flag = 1;
+            LED1_ON;
+            LED2_ON;
+            LED3_ON;
+            jdq1 = 0;
+						TIM_SetCompare3(TIM3,1000);
+            currentDataPoint.valueled1 = 1;
+            currentDataPoint.valueled2 = 1;
+            currentDataPoint.valueled3 = 1;
+            currentDataPoint.valueRelay = 1;
+					currentDataPoint.valuepwm1 = 1000;
+        }
+        else
+        {
+            //关灯
+            key1_flag = 0;
+            key2_flag = 0;
+            key3_flag = 0;
+            key4_flag = 0;
+						key = 1;
+            LED1_OFF;
+            LED2_OFF;
+            LED3_OFF;
+            jdq1 = 1;
+TIM_SetCompare3(TIM3,0);
+            currentDataPoint.valueled1 = 0;
+            currentDataPoint.valueled2 = 0;
+            currentDataPoint.valueled3 = 0;
+            currentDataPoint.valueRelay = 0;
+										currentDataPoint.valuepwm1 = 0;
+        }
+        short_key_flag = 0;
+
+    }
+    else  if(long_key_flag == 1)
+    {
+
+        printf("\r\nWIFI复位，请重新配置连接\r\n");
+        mcuRestart(); // 复位
+        long_key_flag = 0;
+    }
+}
+
+/*******************************************************************************
+** 函数名称: Gizwits_Init
+** 功能描述:
+** 参数说明: None
+** 返回说明: None
+** 创建人员: temp_duan
+** 创建日期: 2019-07-09
+**------------------------------------------------------------------------------
+** 修改人员:
+** 修改日期:
+** 修改描述:
+**------------------------------------------------------------------------------
+********************************************************************************/
+void Gizwits_Init(void)
+{
+    TIM1_Int_Init(99, 719);
+    TIM4_Int_Init(9, 7199);
+    usart3_init(9600); // wifi初始化 波特率必须为9600
+    memset((uint8_t *)&currentDataPoint, 0, sizeof(dataPoint_t));
+    gizwitsInit();
+}
+
+/*******************************************************************************
+** 函数名称: Hardware_Init
+** 功能描述:
+** 参数说明: None
+** 返回说明: None
+** 创建人员: temp_duan
+** 创建日期: 2019-07-09
+**------------------------------------------------------------------------------
+** 修改人员:
+** 修改日期:
+** 修改描述:
+**------------------------------------------------------------------------------
+********************************************************************************/
+void Hardware_Init(void)
+{
+
+    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
+
+    Delay_Init();
+    usart_init(115200);
+    LED_Init();
+    EXTIX_Init();
+    beep_init();
+    door_init();
+    DHT11_Init();
+    ADCx_Init();
+    jdq_init();
+		TIM3_Int_Init(899,0);
+    Gizwits_Init();
+    Iwdg_Init(4, 1250);
+
+}
+
+/*******************************************************************************
+** 函数名称: main
+** 功能描述:
+** 参数说明: None
+** 返回说明: None
+** 创建人员: temp_duan
+** 创建日期: 2019-07-09
+**------------------------------------------------------------------------------
+** 修改人员:
+** 修改日期:
+** 修改描述:
+**------------------------------------------------------------------------------
+********************************************************************************/
+int main(void)
+{
+
+    Hardware_Init();
+
+    while(1)
+    {
+        userHandle();
+        scanf_key();
+        gizwitsHandle((dataPoint_t *)&currentDataPoint); //协议处理
+    }
+}
+
+/*******************************************************************************
+** 函数名称: scanf_key
+** 功能描述:
+** 参数说明: None
+** 返回说明: None
+** 创建人员: temp_duan
+** 创建日期: 2019-07-09
+**------------------------------------------------------------------------------
+** 修改人员:
+** 修改日期:
+** 修改描述:
+**------------------------------------------------------------------------------
+********************************************************************************/
+void scanf_key(void)
+{
+    if(KEY1 == RESET)
+    {
+        DelayMs(10);
+        if(KEY1 == RESET)
+        {
+            if(key1_flag == 0)
+            {
+                key1_flag = 1;
+                LED1_ON;
+                currentDataPoint.valueled1 = 1;
+            }
+            else
+            {
+                key1_flag = 0;
+                LED1_OFF;
+                currentDataPoint.valueled1 = 0;
+            }
+        }
+        while(!KEY1);
+    }
+
+    else if(KEY2 == RESET)
+    {
+        DelayMs(10);
+        if(KEY2 == RESET)
+        {
+            if(key2_flag == 0)
+            {
+                key2_flag = 1;
+                LED2_ON;
+                currentDataPoint.valueled2 = 1;
+            }
+            else
+            {
+                key2_flag = 0;
+                LED2_OFF;
+                currentDataPoint.valueled2 = 0;
+            }
+        }
+        while(!KEY2);
+    }
+
+    else if(KEY3 == RESET)
+    {
+        DelayMs(10);
+        if(KEY3 == RESET)
+        {
+            if(key3_flag == 0)
+            {
+                key3_flag = 1;
+                LED3_ON;
+                currentDataPoint.valueled3 = 1;
+            }
+            else
+            {
+                key3_flag = 0;
+                LED3_OFF;
+                currentDataPoint.valueled3 = 0;
+            }
+        }
+        while(!KEY3);
+    }
+
+    else if(KEY4 == RESET)
+    {
+        DelayMs(10);
+        if(KEY4 == RESET)
+        {
+            if(key4_flag == 0)
+            {
+                key4_flag = 1;
+                jdq1 = 0;
+							TIM_SetCompare3(TIM3,1000);
+							currentDataPoint.valuepwm1 = 1000;
+                currentDataPoint.valueRelay = 1;
+            }
+            else
+            {
+                key4_flag = 0;
+                jdq1 = 1;
+							TIM_SetCompare3(TIM3,0);
+							currentDataPoint.valuepwm1 = 0;
+                currentDataPoint.valueRelay = 0;
+            }
+        }
+        while(!KEY4);
+    }
+
+    if(door == RESET)
+    {
+        currentDataPoint.valuedoor = 0;
+    }
+    else
+    {
+        currentDataPoint.valuedoor = 1;
+    }
+}

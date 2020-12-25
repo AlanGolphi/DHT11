@@ -1,0 +1,9 @@
+wens\ringbuffer.o: ..\Utils\ringbuffer.c
+wens\ringbuffer.o: ..\Utils\ringBuffer.h
+wens\ringbuffer.o: D:\KeilForArm\ARM\ARMCC\Bin\..\include\stdint.h
+wens\ringbuffer.o: D:\KeilForArm\ARM\ARMCC\Bin\..\include\stdio.h
+wens\ringbuffer.o: D:\KeilForArm\ARM\ARMCC\Bin\..\include\stdlib.h
+wens\ringbuffer.o: D:\KeilForArm\ARM\ARMCC\Bin\..\include\string.h
+wens\ringbuffer.o: ..\Utils\common.h
+wens\ringbuffer.o: D:\KeilForArm\ARM\ARMCC\Bin\..\include\stdbool.h
+wens\ringbuffer.o: D:\KeilForArm\ARM\ARMCC\Bin\..\include\ctype.h
